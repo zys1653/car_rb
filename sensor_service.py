@@ -45,6 +45,8 @@ Configure the MQTT settings below before running.  You can customise
 password.  The script will automatically reconnect if the broker is
 reachable.
 """
+import adafruit_ads1x15.ads1115 as ADS
+from adafruit_ads1x15.analog_in import AnalogIn
 
 import json
 import logging
@@ -96,6 +98,9 @@ DHT_PIN = 4  # DHT22 data line on GPIO4
 PIR_PIN = 17  # SR501 PIR sensor on GPIO17
 MICROWAVE_PIN = 27  # Microwave radar sensor on GPIO27
 
+MQ7_ADC_CHANNEL = 0
+MQ7_CO_DETECT_VOLTAGE = 1.0
+
 # Interval between sensor polls in seconds
 READ_INTERVAL = 2.0
 
@@ -115,6 +120,9 @@ class SensorService:
         # Initialise I2C bus for the SGP30 sensor
         self.i2c = busio.I2C(board.SCL, board.SDA)
         self.sgp30 = adafruit_sgp30.Adafruit_SGP30(self.i2c)
+        self.ads = ADS.ADS1115(self.i2c)
+        self.ads.gain = 1
+        self.mq7_channel = AnalogIn(self.ads, 0)
         logging.info("SGP30 initialised; serial number %s", [hex(i) for i in self.sgp30.serial])
 
         # Initialise the DHT22 sensor on the specified pin
@@ -188,12 +196,36 @@ class SensorService:
         values are returned as‑is.  Any exception results in ``None``.
         """
         try:
-            tvoc = self.sgp30.TVOC  # parts per billion
-            eco2 = self.sgp30.eCO2  # parts per million
+            eco2, tvoc = self.sgp30.iaq_measure()
             return tvoc, eco2
         except Exception as exc:  # pylint: disable=broad-except
             logging.error("Error reading SGP30: %s", exc)
             return None, None
+            
+    def read_mq7(self):
+        """
+        读取 MQ-7 一氧化碳传感器模拟输出。
+
+        注意：
+        这里先返回 ADC 原始值和电压值。
+        MQ-7 如果要换算成 ppm，需要经过预热、R0 标定和曲线拟合。
+        所以 co_ppm 暂时返回 None。
+        """
+        try:
+            raw = self.mq7_channel.value
+            voltage = self.mq7_channel.voltage
+
+            co_detected = voltage >= MQ7_CO_DETECT_VOLTAGE
+
+            return raw, round(voltage, 3), co_detected, None
+
+        except Exception as exc:
+            logging.error("Error reading MQ-7 via ADS1115: %s", exc)
+            return None, None, None, None
+
+
+
+
 
     def read_motion_sensors(self) -> tuple[bool, bool]:
         """Return the state of the PIR and microwave motion sensors."""
@@ -289,6 +321,7 @@ class SensorService:
 
                 temperature, humidity = self.read_dht22()
                 tvoc, eco2 = self.read_sgp30()
+                mq7_raw, mq7_voltage, co_detected, co_ppm = self.read_mq7()
                 pir_state, microwave_state = self.read_motion_sensors()
                 gps_value = self.read_gps()
 
@@ -298,9 +331,13 @@ class SensorService:
                     "humidity_percent": humidity,
                     "tvoc_ppb": tvoc,
                     "eco2_ppm": eco2,
+                    "mq7_adc_raw": mq7_raw,
+                    "mq7_voltage_v": mq7_voltage,
+                    "co_detected": co_detected,
+                    #"co_ppm": co_ppm,
                     "pir_detected": pir_state,
                     "microwave_detected": microwave_state,
-                    "gps": gps_value,
+                    #"gps": gps_value,
                 }
 
                 # Persist locally and publish to MQTT
