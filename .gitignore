@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+# virtual environment
+venv/
+sensor_venv/
+.venv/
+# logs
+*.log
+# env/config secrets
+.env
+config.py
+secrets.py
+# system
+.DS_Store

@@ -1,0 +1,7 @@
+
+adafruit-circuitpython-dht
+adafruit-circuitpython-sgp30
+adafruit-blinka
+paho-mqtt
+pynmea2
+pyserial
