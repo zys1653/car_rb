@@ -323,7 +323,7 @@ class SensorService:
                 tvoc, eco2 = self.read_sgp30()
                 mq7_raw, mq7_voltage, co_detected, co_ppm = self.read_mq7()
                 pir_state, microwave_state = self.read_motion_sensors()
-                gps_value = self.read_gps()
+                #gps_value = self.read_gps()
 
                 payload = {
                     "timestamp": int(time.time()),

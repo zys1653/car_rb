@@ -121,6 +121,26 @@ def on_message(client, userdata, msg):
     except Exception as e:
         logging.error("处理MQTT消息失败：%s", e)
 
+def wait_for_first_mqtt_data(timeout=30):
+    logging.info("正在等待首包MQTT数据...")
+
+    start_time = time.time()
+
+    while True:
+        sensor_ready = bool(latest_sensor)
+        ai_ready = bool(latest_ai)
+
+        if sensor_ready and ai_ready:
+            logging.info("已收到首包MQTT数据，开始报警判断")
+            return True
+
+        if time.time() - start_time > timeout:
+            logging.warning("等待MQTT首包数据超时，继续运行")
+            return False
+
+        time.sleep(1)
+
+
 
 # ===================== 控制指令处理 =====================
 def handle_control_command(client, data):
@@ -208,10 +228,10 @@ def judge_alarm():
     microwave = bool(latest_sensor.get("microwave_detected", False))
 
     if ai_person:
-        return "ai video fond person in car"
+        return "person detected by video."
 
     if pir and microwave:
-        return "unsure person in car"
+        return "suspected person detected by PIR and microwave sensors."
 
     return None
 
@@ -228,6 +248,11 @@ def main():
     client.connect(MQTT_HOST, MQTT_PORT, 60)
     client.loop_start()
 
+
+    logging.info("message_server.py 已启动")
+
+    wait_for_first_mqtt_data(timeout=10)
+
     logging.info("message_server.py 已启动")
 
     while True:
@@ -236,7 +261,7 @@ def main():
                 alarm_text = judge_alarm()
 
                 if alarm_text:
-                    msg = f"ALARM：{alarm_text}。please cheak your car。"
+                    msg = f"ALARM：{alarm_text}。Please check the car immediately.。"
                     sms.send_sms(ALERT_PHONE, msg)
 
                     client.publish(
